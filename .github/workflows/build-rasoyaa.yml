@@ -1,0 +1,81 @@
+name: Build Rasoyaa Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Production standalone build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript validation
+        run: npm run typecheck
+
+      - name: Production build
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Package standalone deployment artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ARTIFACT_DIR="rasoyaa-standalone"
+          rm -rf "$ARTIFACT_DIR"
+          mkdir -p "$ARTIFACT_DIR"
+
+          # Standalone server + traced production node_modules
+          cp -a .next/standalone/. "$ARTIFACT_DIR/"
+
+          # Static assets required at runtime (not inside standalone by default)
+          mkdir -p "$ARTIFACT_DIR/.next/static"
+          cp -a .next/static/. "$ARTIFACT_DIR/.next/static/"
+
+          mkdir -p "$ARTIFACT_DIR/public"
+          cp -a public/. "$ARTIFACT_DIR/public/"
+
+          # Exclude secrets and VCS metadata if present
+          find "$ARTIFACT_DIR" -name '.env' -o -name '.env.*' -o -name '.git' | while read -r path; do
+            rm -rf "$path"
+          done
+
+          # Verify required runtime pieces exist
+          test -f "$ARTIFACT_DIR/server.js"
+          test -d "$ARTIFACT_DIR/.next/static"
+          test -d "$ARTIFACT_DIR/public"
+
+          # Include hidden files (e.g. .next) in the archive
+          tar -czf rasoyaa-standalone.tar.gz -C "$ARTIFACT_DIR" .
+
+          echo "Artifact contents (top level):"
+          ls -la "$ARTIFACT_DIR"
+          echo "Archive size:"
+          ls -lh rasoyaa-standalone.tar.gz
+
+      - name: Upload deployment artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rasoyaa-standalone
+          path: rasoyaa-standalone.tar.gz
+          retention-days: 7
+          if-no-files-found: error

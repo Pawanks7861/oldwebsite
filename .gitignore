@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Standalone packaging (local/CI)
+/rasoyaa-standalone/
+/rasoyaa-standalone.tar.gz
+server-out.log
+server-err.log
